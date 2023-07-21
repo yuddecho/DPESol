@@ -1,0 +1,51 @@
+# ###下载模型
+import torch
+
+model, alphabet = torch.hub.load("facebookresearch/esm:main", "esm2_t33_650M_UR50D")
+
+
+# print(model)
+
+# Load ESM-2 model
+batch_converter = alphabet.get_batch_converter()
+model.eval()  # disables dropout for deterministic results
+
+# Prepare data (first 2 sequences from ESMStructuralSplitDataset superfamily / 4)
+data = [
+        ("protein1", "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGGMKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"),
+        ("proin1", "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLLGYNIVATPRGYVLAGG"),
+        ("protei", "MKTVRQERLKSIVRILERSKEGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG")
+    ]
+
+print(len(data[0][1]))
+
+batch_labels, batch_strs, batch_tokens = batch_converter(data)
+batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)
+
+
+# 获取蛋白质序列特征表示
+representations = model(batch_tokens, repr_layers=[33])["representations"][33]
+print(representations.shape)
+
+# 将特征表示压平以输入到 MLP
+representations = representations.contiguous().view(representations.size(0), -1)
+print(representations.shape)
+
+raise
+
+
+# Extract per-residue representations (on CPU)
+with torch.no_grad():
+    results = model(batch_tokens, repr_layers=[33], return_contacts=True)
+token_representations = results["representations"][33]
+print(token_representations.shape)
+
+# Generate per-sequence representations via averaging
+# NOTE: token 0 is always a beginning-of-sequence token, so the first residue is token 1.
+sequence_representations = []
+for i, tokens_len in enumerate(batch_lens):
+    print(tokens_len)
+    sequence_representations.append(token_representations[i, 1: tokens_len - 1].mean(0))
+
+print(len(sequence_representations), len(sequence_representations[0]), sequence_representations)
+print(results.keys())
