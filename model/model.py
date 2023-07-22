@@ -44,13 +44,11 @@ class MLP(nn.Module):
 
 # 整体预测网络
 class DPESol(nn.Module):
-    def __init__(self, log):
+    def __init__(self, esm_model):
         super(DPESol, self).__init__()
 
         # ESM-2
-        self.esm_model, self.esm_alphabet = torch.hub.load("facebookresearch/esm:main", "esm2_t33_650M_UR50D")
-        self.esm_model.eval()
-        log(f'Info: esm2_t33_650M_UR50D load finish', True)
+        self.esm_model = esm_model
 
         # 冻结参数
         for param in self.esm_model.parameters():
@@ -111,67 +109,3 @@ class DPESol(nn.Module):
         # print(output.shape)
 
         return output
-
-
-if __name__ == '__main__':
-    model = DPESol()
-    alphabet = model.esm_alphabet
-    batch_converter = alphabet.get_batch_converter()
-    # print(model)
-
-    # 定义损失函数和优化器
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    # 构建 dataset
-    seq_dataset = SequenceDataset(dataset_file)
-
-    # 划分数据集
-    dataset_scale = 0.8
-    train_size = int(dataset_scale * len(seq_dataset))
-    train_dataset, test_dataset = random_split(seq_dataset, [train_size, len(seq_dataset) - train_size])
-
-    # 加载数据集
-    batch_size = 16
-    train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset_collate_fn)
-    test_dataloader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset_collate_fn)
-
-    # 训练模型
-    num_epochs = 1000
-    for epoch in range(num_epochs):
-        loss_total, loss_count = 0, 0
-        for step, (inputs, targets) in enumerate(train_dataloader):
-            optimizer.zero_grad()
-
-            # 序列转换
-            batch_labels, batch_strs, batch_tokens = batch_converter(inputs)
-            batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)
-
-            outputs = model(batch_tokens)
-
-            # tensor[2, 1] -> tensor[2]
-            outputs = torch.squeeze(outputs)
-            # print(outputs.shape, targets.shape)
-            # raise
-
-            # output: [batch_size, max_tokens_len, 1], target: [batch_size, 1]
-            loss = criterion(outputs, targets)
-
-            # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
-            outputs_np, targets_np = outputs.detach().numpy(), targets.numpy()
-
-            # 计算均方根误差（RMSE）
-            rmse = np.sqrt(mean_squared_error(outputs_np, targets_np))
-
-            # 计算决定系数（R^2） 参数顺序是真实标签在前，预测结果在后
-            r2 = r2_score(targets_np, outputs_np)
-
-            loss.backward()
-            optimizer.step()
-
-            loss_total += loss.item()
-            loss_count += 1
-
-            print(f"Epoch [{epoch + 1}/{num_epochs}], Step [{step}] Loss: {loss.item():.4f}, RMSE: {rmse}, R^2: {r2}")
-
-        print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {(loss_total / loss_count):.4f}")

@@ -87,7 +87,14 @@ class Train(Args):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         # 定义 model
-        self.model = DPESol(self.log)
+
+        # ESM-2
+        self.esm_model, self.esm_alphabet = torch.hub.load("facebookresearch/esm:main", "esm2_t33_650M_UR50D")
+        self.batch_converter = self.esm_alphabet.get_batch_converter()
+        self.esm_model.eval()
+        self.log(f'Info: esm2_t33_650M_UR50D load finish', True)
+
+        self.model = DPESol(self.esm_model)
         self.log(f'\n{self.model}\n', False)
 
         # 模型
@@ -97,9 +104,6 @@ class Train(Args):
             self.model = nn.DataParallel(self.model)
 
         self.model.to(self.device)
-
-        self.alphabet = self.model.get_esm_alphabet()
-        self.batch_converter = self.alphabet.get_batch_converter()
         # print(model)
 
         # 定义损失函数和优化器
