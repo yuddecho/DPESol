@@ -39,7 +39,7 @@ class Args:
         # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
         self.last_rmse = sys.maxsize  # 最大值，比这个小 就保存
         self.last_r2 = -sys.maxsize - 1  # 最小值，比这个大 就保存
-        self.checkpoint_pt = f'{root}/checkpoint.pt'
+        self.checkpoint_pt = f'{root}/model/checkpoint.pt'
 
         # 3. 日志操作
         self.log_file = f'{root}/model/log.txt'

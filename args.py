@@ -23,6 +23,9 @@ protein_seq = f'{root}/k12/sequence (1).txt'
 # 蛋白质序列最大长度
 protein_seq_max_len = 1174
 
+if __name__ == '__main__':
+    print(root)
+
 
 
 
