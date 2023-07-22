@@ -1,11 +1,14 @@
 import os
+import sys
 
-# 获取根目录绝对路径
-curr_dir = os.getcwd()
-parent_dir, curr_dir_name = os.path.split(curr_dir)
-# parent_dir, _ = os.path.split(parent_dir)
+# 获取当前脚本所在的目录
+script_directory = os.path.dirname(os.path.abspath(__file__))
 
-root = f'{parent_dir}/protein'
+# 获取当前脚本所在目录的父目录的绝对路径
+parent_directory = os.path.dirname(script_directory)
+
+root = f'{parent_directory}/protein'
+print(f'root: {root}')
 
 
 # 1. 数据处理过程，文件路径参数
