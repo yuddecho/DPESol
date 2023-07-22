@@ -98,7 +98,7 @@ class Train(Args):
 
         self.model.to(self.device)
 
-        self.alphabet = self.model.esm_alphabet
+        self.alphabet = self.model.get_esm_alphabet()
         self.batch_converter = self.alphabet.get_batch_converter()
         # print(model)
 
