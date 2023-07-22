@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, random_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 from DPESol.args import dataset_file, root
-from DPESol.model.dataset import SequenceDataset, dataset_collate_fn
+from dataset import SequenceDataset, dataset_collate_fn
 
 
 class Args:
