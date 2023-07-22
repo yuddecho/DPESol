@@ -3,7 +3,7 @@ import os
 # 获取根目录绝对路径
 curr_dir = os.getcwd()
 parent_dir, curr_dir_name = os.path.split(curr_dir)
-parent_dir, _ = os.path.split(parent_dir)
+# parent_dir, _ = os.path.split(parent_dir)
 
 root = f'{parent_dir}/protein'
 
