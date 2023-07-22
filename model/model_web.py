@@ -69,6 +69,9 @@ class DPESol(nn.Module):
         # 拼接
         # self.esm_model.add_module("mlp", self.mpl)
 
+    def get_esm_alphabet(self):
+        return self.esm_alphabet
+
     def forward(self, x):
         # 使用ESM-2编码蛋白质序列
         with torch.no_grad():
