@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 from torch import optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 import torch.nn.functional as F
 
 import numpy as np
 from sklearn.metrics import mean_squared_error, r2_score
 
-from DPESolDataset import SequenceDataset, dataset_collate_fn
+from dataset import SequenceDataset, dataset_collate_fn
 from DPESol.args import dataset_file, protein_seq_max_len
 
 
@@ -44,37 +44,27 @@ class MLP(nn.Module):
 
 # 整体预测网络
 class DPESol(nn.Module):
-    def __init__(self):
+    def __init__(self, log):
         super(DPESol, self).__init__()
 
         # ESM-2
         self.esm_model, self.esm_alphabet = torch.hub.load("facebookresearch/esm:main", "esm2_t33_650M_UR50D")
         self.esm_model.eval()
-        print(f'Info: esm2_t33_650M_UR50D load finish.')
+        log(f'Info: esm2_t33_650M_UR50D load finish', True)
 
         # 冻结参数
         for param in self.esm_model.parameters():
             param.requires_grad = False
 
         # MPL 1 将 [batch_size, num_tokens, 1280] 拟合成 [batch_size, num_tokens, 10]
-        input_size = 1280  # ESM-2模型的输出大小，并展平
-        hidden_sizes = [512, 128]  # 隐藏层大小列表
-        output_size = 10  # MLP的输出大小
-        dropout_prob = 0.2  # 被丢弃的概率
-        self.mpl_1 = MLP(input_size, hidden_sizes, output_size, dropout_prob)
-
-        # MPL 2
-        input_size = 10 * (protein_seq_max_len + 2)  # ESM-2模型的输出大小，并展平
+        input_size = 1280 * (protein_seq_max_len + 2)  # ESM-2模型的输出大小，并展平
 
         # 150528 -> 655136 -> 16384 -> 4069
-        # hidden_sizes = [1024 * 64, 1024 * 16, 1024 * 4, 1024]  # 隐藏层大小列表
-
-        # 11760 1024 128
-        hidden_sizes = [1024, 128]  # 隐藏层大小列表
+        hidden_sizes = [1024 * 64, 1024 * 16, 1024 * 4, 1024]  # 隐藏层大小列表
 
         output_size = 1  # MLP的输出大小
         dropout_prob = 0.2  # 被丢弃的概率
-        self.mpl_2 = MLP(input_size, hidden_sizes, output_size, dropout_prob)
+        self.mpl = MLP(input_size, hidden_sizes, output_size, dropout_prob)
 
         # 拼接
         # self.esm_model.add_module("mlp", self.mpl)
@@ -89,20 +79,16 @@ class DPESol(nn.Module):
         protein_sequence_embedding = res["representations"][33]
         # print(protein_sequence_embedding.shape)
 
-        # 先将 1280 拟合到 10 torch.Size([batch_size, num_tokens, 1280]) -> torch.Size([batch_size, num_tokens, 10])
-        protein_sequence_embedding = self.mpl_1(protein_sequence_embedding)
-        # print(protein_sequence_embedding.shape)
-
         # 改变维度大小 torch.Size([batch_size, num_tokens, 10]) -> torch.Size([batch_size, num_tokens * 10])
         protein_sequence_embedding = protein_sequence_embedding.contiguous().view(protein_sequence_embedding.size(0), -1)
         # print(protein_sequence_embedding.shape)
 
-        # 序列长度填充到 1176 * 10
-        protein_sequence_embedding = F.pad(protein_sequence_embedding, (0, (protein_seq_max_len + 2) * 10 - protein_sequence_embedding.size(1), 0, 0), value=0)
+        # 序列长度填充到 1176 * 1280
+        protein_sequence_embedding = F.pad(protein_sequence_embedding, (0, (protein_seq_max_len + 2) * 1280 - protein_sequence_embedding.size(1), 0, 0), value=0)
         # print(protein_sequence_embedding.shape)
 
         # 在特征上应用MLP进行进一步预测 torch.Size([batch_size, num_tokens * 10]) -> torch.Size([batch_size, 1])
-        output = self.mpl_2(protein_sequence_embedding)
+        output = self.mpl(protein_sequence_embedding)
 
         # torch.Size([3, 9, 1]) 最后返回的结果是每个 token 一个预测值, 这不是我们想要的，想要 torch.Size([3, 1]) 所以需要改变维度大小
         # print(output.shape)
@@ -120,15 +106,24 @@ if __name__ == '__main__':
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    # dataset
+    # 构建 dataset
     seq_dataset = SequenceDataset(dataset_file)
-    seq_dataloader = DataLoader(dataset=seq_dataset, batch_size=16, shuffle=True, collate_fn=dataset_collate_fn)
+
+    # 划分数据集
+    dataset_scale = 0.8
+    train_size = int(dataset_scale * len(seq_dataset))
+    train_dataset, test_dataset = random_split(seq_dataset, [train_size, len(seq_dataset) - train_size])
+
+    # 加载数据集
+    batch_size = 16
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset_collate_fn)
+    test_dataloader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset_collate_fn)
 
     # 训练模型
     num_epochs = 1000
     for epoch in range(num_epochs):
         loss_total, loss_count = 0, 0
-        for step, (inputs, targets) in enumerate(seq_dataloader):
+        for step, (inputs, targets) in enumerate(train_dataloader):
             optimizer.zero_grad()
 
             # 序列转换
