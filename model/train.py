@@ -176,6 +176,7 @@ class Train(Args):
             # batch_lens = (batch_tokens != self.alphabet.padding_idx).sum(1)
 
             batch_tokens = batch_tokens.to(self.device)
+            targets = targets.to(self.device)
 
             outputs = self.model(batch_tokens)
 
@@ -188,7 +189,7 @@ class Train(Args):
             loss = self.criterion(outputs, targets)
 
             # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
-            outputs_np, targets_np = outputs.detach().to('cpu').numpy(), targets.numpy()
+            outputs_np, targets_np = outputs.detach().to('cpu').numpy(), targets.to('cpu').numpy()
 
             # 计算均方根误差（RMSE）
             rmse = np.sqrt(mean_squared_error(outputs_np, targets_np))
@@ -225,6 +226,7 @@ class Train(Args):
                 # batch_lens = (batch_tokens != self.alphabet.padding_idx).sum(1)
 
                 batch_tokens = batch_tokens.to(self.device)
+                targets = targets.to(self.device)
 
                 outputs = self.model(batch_tokens)
 
@@ -237,7 +239,7 @@ class Train(Args):
                 loss = self.criterion(outputs, targets)
 
                 # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
-                outputs_np, targets_np = outputs.detach().to('cpu').numpy(), targets.numpy()
+                outputs_np, targets_np = outputs.detach().to('cpu').numpy(), targets.to('cpu').numpy()
 
                 # 计算均方根误差（RMSE）
                 rmse = np.sqrt(mean_squared_error(outputs_np, targets_np))
