@@ -1,6 +1,6 @@
 from DPESol.args import esol_file, nucleotide_seq, protein_seq, esol_all_data
 
-# 7.18 联合 eSol 和 从 NCBI 上 K12 的东西，目前还有一部分未找到，需要继续
+# 7.18 联合 eSol 和 从 NCBI 上 K12 下载的序列信息，目前还有一部分未找到，需要继续
 
 # gen_name: [solubility, nucleotide, protein]
 esol_dict = {}

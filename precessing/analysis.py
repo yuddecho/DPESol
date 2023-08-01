@@ -8,9 +8,11 @@ import numpy as np
 # 1. 获取数据
 nucleotide_seq_len_dict, acid_seq_len_dict = {}, {}
 nucleotide_set, acid_set = set(), set()
+data_count = 0
 
 with open(esol_all_data, 'r', encoding='utf-8') as r:
     rows = r.readlines()
+    data_count = len(rows)
     for row in rows:
         row = row.strip()
         row_list = row.split(',')
@@ -33,7 +35,7 @@ print(f'seq info: {len(nucleotide_set)}: [{nucle_seq_min_len}, {nucle_seq_max_le
 
 
 # 检查 前 95% 数据
-total = len(nucleotide_seq_len_dict.keys())
+total = data_count
 max_seq_num = int(total * 0.99)
 print(f'{total}: {max_seq_num}: {total - max_seq_num}')
 
@@ -52,9 +54,17 @@ plt.scatter(x, y, s=2, label='nucleotide')
 
 # 画 限定线
 x.sort()
-x_max_index = x[max_seq_num]
-plt.plot([x_max_index, x_max_index], [0, 16], label='max')
+
+seq_count, x_max_index = 0, -1
+for _x in x:
+    seq_count += nucleotide_seq_len_dict[_x]
+    if seq_count > max_seq_num:
+        x_max_index = _x
+        break
+
 print(f'nucleotide max len: {x_max_index}')
+plt.plot([x_max_index, x_max_index], [0, 16], label='max_len')
+
 
 plt.legend()
 
@@ -79,9 +89,16 @@ plt.scatter(x, y, s=2, label='protein')
 
 # 画 限定线
 x.sort()
-x_max_index = x[max_seq_num]
-plt.plot([x_max_index, x_max_index], [0, 16], label='max')
+seq_count, x_max_index = 0, -1
+for _x in x:
+    seq_count += acid_seq_len_dict[_x]
+    if seq_count > max_seq_num:
+        x_max_index = _x
+        break
+
 print(f'acid max len: {x_max_index}')
+plt.plot([x_max_index, x_max_index], [0, 16], label='max_len')
+
 
 plt.legend()
 
@@ -99,7 +116,9 @@ plt.savefig('res.png')
 # nucleotide max len: 3525
 # acid max len: 1174
 
-# 3. 长度筛选
+# 3. 长度筛选 好像不需要
+nucle_max_len, acid_max_len = 2745, 914
+count = 0
 with open(dataset_file, 'w', encoding='utf-8') as w:
     with open(esol_all_data, 'r', encoding='utf-8') as r:
         rows = r.readlines()
@@ -110,7 +129,10 @@ with open(dataset_file, 'w', encoding='utf-8') as w:
             # get data
             nucle_seq, acid_seq = row_list[2], row_list[3]
 
-            if len(nucle_seq) > 3525 or len(acid_seq) > 1174:
-                continue
+            # if len(nucle_seq) > nucle_max_len or len(acid_seq) > acid_max_len:
+            #     continue
 
             w.write(f'{row}\n')
+            count += 1
+
+print(count)

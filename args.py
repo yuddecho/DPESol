@@ -8,7 +8,7 @@ script_directory = os.path.dirname(os.path.abspath(__file__))
 parent_directory = os.path.dirname(script_directory)
 
 root = f'{parent_directory}/protein'
-print(f'root: {root}')
+print(f'arg.py root: {root}')
 
 
 # 1. 数据处理过程，文件路径参数

@@ -1,3 +1,5 @@
+import argparse
+import pickle
 import os
 import sys
 import random
@@ -10,27 +12,140 @@ from torch.utils.data import DataLoader, random_split
 
 from sklearn.metrics import mean_squared_error, r2_score
 
-from DPESol.args import dataset_file, root
-from dataset import SequenceDataset, dataset_collate_fn
+import torch
+from torch import nn
+from torch.utils.data import Dataset, DataLoader
 
-"""
-暂时不用：
-    设定模型参数，训练DPESol模型
-"""
+from DPESol.args import root, dataset_file
+
+
+class SequenceDataset(Dataset):
+    def __init__(self, esol_file, dna_embedding_file, protein_embedding_file):
+        self.source_file = esol_file
+
+        # read data
+        self.gene_name_list = []
+        self.gene_solubility_dict = {}
+
+        # embedding
+        self.dna_embedding, self.protein_embedding = {}, {}
+
+        # init
+        self._read_file(dna_embedding_file, protein_embedding_file)
+
+    def _read_file(self, dna_embedding_file, protein_embedding_file):
+        # gene name and solu
+        with open(self.source_file, 'r', encoding='utf-8') as r:
+            rows = r.readlines()
+            for row in rows:
+                row = row.strip()
+                row_list = row.split(',')
+
+                # get data
+                gene_name, solubility, nucle_seq, acid_seq = row_list[0], row_list[1], row_list[2], row_list[3]
+
+                # gene name
+                self.gene_name_list.append(gene_name)
+                # gene: solu
+                self.gene_solubility_dict[gene_name] = float(solubility)
+
+        # embedding
+        with open(dna_embedding_file, 'rb') as r:
+            self.dna_embedding = pickle.load(r)
+
+        with open(protein_embedding_file, 'rb') as r:
+            self.protein_embedding = pickle.load(r)
+
+    def __getitem__(self, index):
+        _gene_name = self.gene_name_list[index]
+
+        solu = self.gene_solubility_dict.get(_gene_name, None)
+        if solu is None:
+            raise ValueError(f'Error: {_gene_name} no solu value')
+        solu_tensor = torch.tensor(solu)
+
+        dna_tensor = self.dna_embedding.get(_gene_name, None)
+        if dna_tensor is None:
+            raise ValueError(f'Error: {_gene_name} no dna tensor')
+
+        protein_tensor = self.protein_embedding.get(_gene_name, None)
+        if protein_tensor is None:
+            raise ValueError(f'Error: {_gene_name} no protein_tensor')
+
+        concatenated_tensor = torch.cat((dna_tensor, protein_tensor), dim=0)
+
+        return concatenated_tensor, solu_tensor
+
+    def __len__(self):
+        return len(self.gene_name_list)
+
+
+# 多层感知机
+class MLP(nn.Module):
+    def __init__(self, input_size, hidden_sizes, output_size, dropout_prob):
+        """
+        :param input_size: input_size = 1280  # ESM-2模型的输出大小
+        :param hidden_sizes: hidden_sizes = [256, 128]  # 隐藏层大小列表
+        :param output_size: output_size = 1  # MLP的输出大小
+        """
+        super(MLP, self).__init__()
+        layers = []
+
+        # 最后一层不添加
+        sizes = [input_size] + hidden_sizes
+        for i in range(len(sizes) - 1):
+            layers.append(nn.Linear(sizes[i], sizes[i + 1]))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(p=dropout_prob))
+
+        layers.append(nn.Linear(hidden_sizes[-1], output_size))
+
+        # sizes = [input_size] + hidden_sizes + [output_size]
+        # for i in range(len(sizes)-1):
+        #     layers.append(nn.Linear(sizes[i], sizes[i+1]))
+        #     layers.append(nn.ReLU())
+
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.mlp(x)
 
 
 class Args:
-    def __init__(self):
+    def __init__(self, _parse_args):
         # 设置参数，保存模型数据，保存日志，设置随机数种子
 
         # 1. 设置模型参数
         self.curr_epoch = 0
-        self.num_epochs = 600
-        self.batch_size = 16
+        self.num_epochs = _parse_args.num_epochs
+        self.batch_size = _parse_args.batch_size
         self.dataset_scale = 0.8
         self.learn_rate = 0.001
 
+        # cuda
+        is_cuda = _parse_args.cuda
+        if is_cuda:
+            os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device("cpu")
+
+        # MLP
+        input_size = 1280 + 768  # ESM-2模型的输出大小，并展平
+        hidden_sizes = [int(item) for item in _parse_args.hidden_sizes.split(',')]  # 隐藏层大小列表
+        output_size = 1  # MLP的输出大小
+        dropout_prob = _parse_args.dropout_prob  # 被丢弃的概率
+        self.model = MLP(input_size, hidden_sizes, output_size, dropout_prob)
+
+        # to gpu
+        if is_cuda and torch.cuda.device_count() > 1:
+            # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
+            self.model = nn.DataParallel(self.model)
+        self.model.to(self.device)
+
         # 数据集文件
+        self.dna_embedding_file = f'{root}/esol/dna_embedding.pkl'
+        self.protein_embedding_file = f'{root}/esol/protein_embedding.pkl'
         self.dataset_file = dataset_file
 
         # 2. 保存模型参数
@@ -84,49 +199,22 @@ class Args:
 
 
 class Train(Args):
-    def __init__(self):
-        super().__init__()
-
-        # device
-        os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-        # 定义 model
-
-        # ESM-2
-        self.esm_model, self.esm_alphabet = torch.hub.load("facebookresearch/esm:main", "esm2_t33_650M_UR50D")
-        self.batch_converter = self.esm_alphabet.get_batch_converter()
-        self.esm_model.eval()
-        self.log(f'Info: esm2_t33_650M_UR50D load finish', True)
-
-        self.model = DPESol(self.esm_model)
-        self.log(f'\n{self.model}\n', False)
-
-        # 模型
-        if torch.cuda.device_count() > 1:
-            self.log(f"Let's use, {torch.cuda.device_count()}, GPUs!")
-            # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
-            self.model = nn.DataParallel(self.model)
-
-        self.model.to(self.device)
-        # print(model)
-
+    def __init__(self, _parse_args):
+        super().__init__(_parse_args)
         # 定义损失函数和优化器
         self.criterion = nn.MSELoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learn_rate)
 
         # 构建 dataset
-        seq_dataset = SequenceDataset(self.dataset_file)
+        seq_dataset = SequenceDataset(self.dataset_file, self.dna_embedding_file, self.protein_embedding_file)
 
         # 划分数据集
         train_size = int(self.dataset_scale * len(seq_dataset))
         train_dataset, test_dataset = random_split(seq_dataset, [train_size, len(seq_dataset) - train_size])
 
         # 加载数据集
-        self.train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True,
-                                           collate_fn=dataset_collate_fn)
-        self.test_dataloader = DataLoader(dataset=test_dataset, batch_size=self.batch_size, shuffle=True,
-                                          collate_fn=dataset_collate_fn)
+        self.train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
+        self.test_dataloader = DataLoader(dataset=test_dataset, batch_size=self.batch_size, shuffle=True)
 
         # 断点续训，恢复参数
         if self.resume and os.path.exists(self.checkpoint_pt):
@@ -176,14 +264,10 @@ class Train(Args):
         for step, (inputs, targets) in enumerate(self.train_dataloader):
             self.optimizer.zero_grad()
 
-            # 序列转换
-            batch_labels, batch_strs, batch_tokens = self.batch_converter(inputs)
-            # batch_lens = (batch_tokens != self.alphabet.padding_idx).sum(1)
-
-            batch_tokens = batch_tokens.to(self.device)
+            inputs = inputs.to(self.device)
             targets = targets.to(self.device)
 
-            outputs = self.model(batch_tokens)
+            outputs = self.model(inputs)
 
             # tensor[2, 1] -> tensor[2]
             outputs = torch.squeeze(outputs)
@@ -226,14 +310,10 @@ class Train(Args):
             loss_total, rmse_total, r2_total, step_count = 0, 0, 0, 0
 
             for step, (inputs, targets) in enumerate(self.test_dataloader):
-                # 序列转换
-                batch_labels, batch_strs, batch_tokens = self.batch_converter(inputs)
-                # batch_lens = (batch_tokens != self.alphabet.padding_idx).sum(1)
-
-                batch_tokens = batch_tokens.to(self.device)
+                inputs = inputs.to(self.device)
                 targets = targets.to(self.device)
 
-                outputs = self.model(batch_tokens)
+                outputs = self.model(inputs)
 
                 # tensor[2, 1] -> tensor[2]
                 outputs = torch.squeeze(outputs)
@@ -268,22 +348,21 @@ class Train(Args):
 
 
 if __name__ == '__main__':
-    import argparse
+    parser = argparse.ArgumentParser(description="DSRP args info")
 
-    parser = argparse.ArgumentParser(description="DPESol args.")
+    parser.add_argument('-ne', '--num_epochs', type=int, default=500)
 
-    # 输入 --flag 的时候，才会触发 action 对应值
-    parser.add_argument('--web_mode', action='store_true')
+    parser.add_argument('-hs', '--hidden_sizes', type=str, default='512,128,32')
+    parser.add_argument('-dp', '--dropout_prob', type=float, default=0.1, help='MLP 被丢弃的概率')
 
-    args = parser.parse_args()
+    parser.add_argument('-bs', '--batch_size', type=int, default=16)
+    parser.add_argument('-c', '--cuda', action='store_true', help='是否开启 cuda')
 
-    web_mode = args.web_mode
-    print(f'web_mode: {web_mode}')
+    parse_args = parser.parse_args()
+    print(parse_args)
 
-    if web_mode:
-        from DPESol.model.model_web import DPESol
-    else:
-        from DPESol.model.model import DPESol
-
-    train = Train()
+    train = Train(parse_args)
     train.run()
+
+
+

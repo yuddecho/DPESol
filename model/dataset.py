@@ -71,6 +71,8 @@ if __name__ == '__main__':
     # 数据加载，每批次 4 个
     train_loader = DataLoader(dataset=seq_dataset, batch_size=2, shuffle=True, collate_fn=dataset_collate_fn)
 
+    print(len(train_loader))
+
     #
     for step, (b_x, b_y) in enumerate(train_loader):
         print(step)
