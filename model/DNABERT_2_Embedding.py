@@ -12,7 +12,7 @@ from torch.utils.data import Dataset, DataLoader
 from DPESol.args import root, dataset_file
 
 """
-    note：使用DNABERT-2对蛋白序列进行编码
+    note：使用DNABERT-2对蛋白序列进行编码git git
 """
 
 

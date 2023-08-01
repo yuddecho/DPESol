@@ -11,6 +11,6 @@ export PYTHONPATH="${PARENT_PATH}:${PYTHONPATH}"
 
 #python ./model/train.py --web_mode
 #python ./model/train.py
-# 修改
-python ./model/DSRP.py
+# 需要修改 batch size
+python ./model/ESM_2_Embedding.py
 
