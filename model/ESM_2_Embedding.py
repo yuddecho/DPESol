@@ -18,6 +18,8 @@ from torch.utils.data import Dataset, DataLoader
 
 from DPESol.args import root, dataset_file
 
+from tqdm import tqdm
+
 """
     note：使用ESM-2对蛋白序列进行编码
     每个数据编码的对应tensor 都保存到 protein_seq_esm_embedding 文件下
@@ -121,9 +123,7 @@ if __name__ == '__main__':
 
     # embedding
     embedding_res_dict = {}
-    for step, (inputs, _) in enumerate(seq_data_loader):
-        print(f'=== {step + 1}/{len(seq_data_loader)} ===')
-
+    for step, (inputs, _) in tqdm(enumerate(seq_data_loader)):
         # 序列转换
         batch_labels, batch_strs, batch_tokens = batch_converter(inputs)
         batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)

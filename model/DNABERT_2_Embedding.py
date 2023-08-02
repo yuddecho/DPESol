@@ -9,6 +9,8 @@ import torch
 from torch import tensor, nn
 from torch.utils.data import Dataset, DataLoader
 
+from tqdm import tqdm
+
 from DPESol.args import root, dataset_file
 
 """
@@ -103,9 +105,7 @@ if __name__ == '__main__':
 
     # embedding
     embedding_res_dict = {}
-    for step, (seqs, gene_names) in enumerate(seq_data_loader):
-        print(f'=== {step + 1}/{len(seq_data_loader)} ===')
-
+    for step, (seqs, gene_names) in tqdm(enumerate(seq_data_loader)):
         # 序列转换
         # inputs = tokenizer(seqs, return_tensors='pt', padding=True)["input_ids"]
         inputs = tokenizer(seqs, return_tensors='pt')["input_ids"]
