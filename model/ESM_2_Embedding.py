@@ -126,7 +126,9 @@ if __name__ == '__main__':
 
     # embedding
     embedding_res_dict = {}
-    for step, (inputs, _) in tqdm(enumerate(seq_data_loader)):
+    bar = tqdm(total=len(seq_data_loader))
+    for step, (inputs, _) in enumerate(seq_data_loader):
+        bar.update(1)
         # 序列转换
         batch_labels, batch_strs, batch_tokens = batch_converter(inputs)
         batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)
@@ -163,6 +165,8 @@ if __name__ == '__main__':
     embedding_res_file = f'{root}/esol/protein_embedding.pkl'
     with open(embedding_res_file, 'wb') as w:
         pickle.dump(embedding_res_dict, w)
+
+    bar.close()
 
     print(f'ok')
 

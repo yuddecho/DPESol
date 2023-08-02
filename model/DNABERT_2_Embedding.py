@@ -108,7 +108,10 @@ if __name__ == '__main__':
 
     # embedding
     embedding_res_dict = {}
-    for step, (seqs, gene_names) in tqdm(enumerate(seq_data_loader)):
+    bar = tqdm(total=len(seq_data_loader))
+    for step, (seqs, gene_names) in enumerate(seq_data_loader):
+        bar.update(1)
+
         # 序列转换
         # inputs = tokenizer(seqs, return_tensors='pt', padding=True)["input_ids"]
         inputs = tokenizer(seqs, return_tensors='pt')["input_ids"]
@@ -130,5 +133,7 @@ if __name__ == '__main__':
     embedding_res_file = f'{root}/esol/dna_embedding.pkl'
     with open(embedding_res_file, 'wb') as w:
         pickle.dump(embedding_res_dict, w)
+
+    bar.close()
 
     print(f'ok')
