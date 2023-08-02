@@ -1,22 +1,18 @@
-import argparse
-import pickle
 import os
 import sys
+import tqdm
 import random
+import pickle
+import argparse
 import numpy as np
 
 import torch
-import torch.nn as nn
-from torch import optim
-from torch.utils.data import DataLoader, random_split
+from torch import nn
+from torch.utils.data import Dataset, DataLoader, random_split
 
 from sklearn.metrics import mean_squared_error, r2_score
 
-import torch
-from torch import nn
-from torch.utils.data import Dataset, DataLoader
-
-from DPESol.args import root, dataset_file
+from DPESol.args import root
 
 
 class SequenceDataset(Dataset):
@@ -115,12 +111,16 @@ class Args:
     def __init__(self, _parse_args):
         # 设置参数，保存模型数据，保存日志，设置随机数种子
 
+        # 0. 设置随机数种子
+        self.seed = 2023
+        self._set_seed()
+
         # 1. 设置模型参数
         self.curr_epoch = 0
         self.num_epochs = _parse_args.num_epochs
         self.batch_size = _parse_args.batch_size
         self.dataset_scale = 0.8
-        self.learn_rate = 0.001
+        self.learn_rate = _parse_args.learn_rate
 
         # cuda
         is_cuda = _parse_args.cuda
@@ -146,16 +146,20 @@ class Args:
         # 数据集文件
         self.dna_embedding_file = f'{root}/esol/dna_embedding.pkl'
         self.protein_embedding_file = f'{root}/esol/protein_embedding.pkl'
-        self.dataset_file = dataset_file
+        self.dataset_file = f'{root}/esol/dataset.csv'
 
         # 2. 保存模型参数
+        if not os.path.exists(f'{root}/model'):
+            os.makedirs(f'{root}/model')
+
         # loss, rmse, r2
         self.train_data_file = f'{root}/model/train.data.csv'
         if os.path.exists(self.train_data_file):
             os.remove(self.train_data_file)
 
         # model checkpoint
-        self.resume = True
+        self.resume = _parse_args.resume
+
         # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
         self.last_rmse = sys.maxsize  # 最大值，比这个小 就保存
         self.last_r2 = -sys.maxsize - 1  # 最小值，比这个大 就保存
@@ -165,20 +169,6 @@ class Args:
         self.log_file = f'{root}/model/log.txt'
         if os.path.exists(self.log_file):
             os.remove(self.log_file)
-
-        # 4. 设置随机数种子
-        seed = 2023
-        random.seed(seed)  # Python的随机性
-        np.random.seed(seed)  # numpy的随机性
-        os.environ['PYTHONHASHSEED'] = str(seed)  # 设置Python哈希种子，为了禁止hash随机化，使得实验可复现
-
-        torch.manual_seed(seed)  # torch的CPU随机性，为CPU设置随机种子
-        torch.cuda.manual_seed(seed)  # torch的GPU随机性，为当前GPU设置随机种子
-        torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.   torch的GPU随机性，为所有GPU设置随机种子
-
-        # 这俩严重降低效率
-        # torch.backends.cudnn.deterministic = True  # 选择确定性算法
-        # torch.backends.cudnn.benchmark = False  # if benchmark=True, deterministic will be False
 
     def log(self, msg, is_print=True):
         with open(self.log_file, 'a', encoding='utf-8') as w:
@@ -194,16 +184,28 @@ class Args:
             w.write(f'{strs[:-1]}\n')
             return strs[:-1]
 
-    def print(self):
-        pass
+    def _set_seed(self):
+        seed = self.seed
+        random.seed(seed)  # Python的随机性
+        np.random.seed(seed)  # numpy的随机性
+        os.environ['PYTHONHASHSEED'] = str(seed)  # 设置Python哈希种子，为了禁止hash随机化，使得实验可复现
+
+        torch.manual_seed(seed)  # torch的CPU随机性，为CPU设置随机种子
+        torch.cuda.manual_seed(seed)  # torch的GPU随机性，为当前GPU设置随机种子
+        torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.   torch的GPU随机性，为所有GPU设置随机种子
+
+        # 这俩严重降低效率
+        # torch.backends.cudnn.deterministic = True  # 选择确定性算法
+        # torch.backends.cudnn.benchmark = False  # if benchmark=True, deterministic will be False
 
 
 class Train(Args):
     def __init__(self, _parse_args):
         super().__init__(_parse_args)
+
         # 定义损失函数和优化器
         self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learn_rate)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learn_rate)
 
         # 构建 dataset
         seq_dataset = SequenceDataset(self.dataset_file, self.dna_embedding_file, self.protein_embedding_file)
@@ -226,10 +228,11 @@ class Train(Args):
             self.last_rmse = checkpoint['rmse']
             self.last_r2 = checkpoint['r2']
 
-            self.log(f'Info: resume checkpoint', True)
+            self.log(f'Info: resume checkpoint')
 
     def run(self):
-        self.log(f'Info: start training', True)
+        self.log(f'Info: start training', is_print=False)
+        bar = tqdm.tqdm(total=(self.num_epochs - self.curr_epoch))
         for epoch in range(self.curr_epoch, self.num_epochs):
             # loss, rmse, r2
             train_result = self.train_model(epoch)
@@ -240,12 +243,9 @@ class Train(Args):
 
             # 保存模型训练参数
             rmse, r2 = (train_result[1] + test_result[1]) / 2.0, (train_result[2] + test_result[2]) / 2.0
-
-            # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
             if rmse < self.last_rmse or r2 > self.last_r2:
-                self.log(f'Best {info}')
+                self.log(f'Best {info}', is_print=False)
 
-                # 保存模型参数
                 checkpoint = {
                     'epoch': epoch,
                     'model_state_dict': self.model.state_dict(),
@@ -255,6 +255,11 @@ class Train(Args):
                 }
 
                 torch.save(checkpoint, self.checkpoint_pt)
+
+            bar.update(1)
+            bar.set_description(f'rmse: {rmse:.3f}, r2: {r2:.3f}')
+
+        bar.close()
 
     def train_model(self, epoch):
         # need args: model, dataloader, criterion, optimizer, num_epochs
@@ -269,12 +274,12 @@ class Train(Args):
 
             outputs = self.model(inputs)
 
-            # tensor[2, 1] -> tensor[2]
-            outputs = torch.squeeze(outputs)
-            # print(outputs.shape, targets.shape)
+            # print(inputs.shape, targets.shape, outputs.shape)
             # raise
 
-            # output: [batch_size, max_tokens_len, 1], target: [batch_size, 1]
+            # tensor[batch_size, 1] -> tensor[batch_size]
+            outputs = torch.squeeze(outputs)
+
             loss = self.criterion(outputs, targets)
 
             # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
@@ -296,9 +301,9 @@ class Train(Args):
             step_count += 1
 
             self.log(
-                f"Train Epoch [{epoch + 1}/{self.num_epochs}], Step [{step}] Loss: {loss.item():.4f}, RMSE: {rmse:.4f}, R^2: {r2:.4f}")
+                f"Train Epoch [{epoch + 1}/{self.num_epochs}], Step [{step}] Loss: {loss.item():.4f}, RMSE: {rmse:.4f}, R^2: {r2:.4f}", is_print=False)
 
-        self.log(f"Train Epoch [{epoch + 1}/{self.num_epochs}], Total Loss: {(loss_total / step_count):.4f}, RMSE: {rmse_total / step_count:.4f}, R^2: {r2_total / step_count:.4f}")
+        self.log(f"Train Epoch [{epoch + 1}/{self.num_epochs}], Total Loss: {(loss_total / step_count):.4f}, RMSE: {rmse_total / step_count:.4f}, R^2: {r2_total / step_count:.4f}", is_print=False)
 
         return [loss_total / step_count, rmse_total / step_count, r2_total / step_count]
 
@@ -317,10 +322,7 @@ class Train(Args):
 
                 # tensor[2, 1] -> tensor[2]
                 outputs = torch.squeeze(outputs)
-                # print(outputs.shape, targets.shape)
-                # raise
 
-                # output: [batch_size, max_tokens_len, 1], target: [batch_size, 1]
                 loss = self.criterion(outputs, targets)
 
                 # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
@@ -339,10 +341,10 @@ class Train(Args):
                 step_count += 1
 
                 self.log(
-                    f"Evaluate Epoch [{epoch + 1}/{self.num_epochs}], Step [{step}] Loss: {loss.item():.4f}, RMSE: {rmse:.4f}, R^2: {r2:.4f}")
+                    f"Evaluate Epoch [{epoch + 1}/{self.num_epochs}], Step [{step}] Loss: {loss.item():.4f}, RMSE: {rmse:.4f}, R^2: {r2:.4f}", is_print=False)
 
             self.log(
-                    f"Evaluate Epoch [{epoch + 1}/{self.num_epochs}], Total Loss: {(loss_total / step_count):.4f}, RMSE: {rmse_total / step_count:.4f}, R^2: {r2_total / step_count:.4f}")
+                    f"Evaluate Epoch [{epoch + 1}/{self.num_epochs}], Total Loss: {(loss_total / step_count):.4f}, RMSE: {rmse_total / step_count:.4f}, R^2: {r2_total / step_count:.4f}", is_print=False)
 
             return [loss_total / step_count, rmse_total / step_count, r2_total / step_count]
 
@@ -356,7 +358,10 @@ if __name__ == '__main__':
     parser.add_argument('-dp', '--dropout_prob', type=float, default=0.1, help='MLP 被丢弃的概率')
 
     parser.add_argument('-bs', '--batch_size', type=int, default=16)
+    parser.add_argument('-lr', '--learn_rate', type=float, default=0.001)
+
     parser.add_argument('-c', '--cuda', action='store_true', help='是否开启 cuda')
+    parser.add_argument('-re', '--resume', action='store_true', help='是否断点续训')
 
     parse_args = parser.parse_args()
     print(parse_args)
@@ -364,5 +369,4 @@ if __name__ == '__main__':
     train = Train(parse_args)
     train.run()
 
-
-
+    print('ok')
