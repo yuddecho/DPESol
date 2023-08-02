@@ -97,8 +97,11 @@ if __name__ == '__main__':
 
     # to gpu
     if is_cuda and torch.cuda.device_count() > 1:
+        print(f"Let's use, {torch.cuda.device_count()}, GPUs!")
         # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
         model = nn.DataParallel(model)
+    else:
+        print(f"Let's use, CPU!")
 
     model.to(device)
     model.eval()
