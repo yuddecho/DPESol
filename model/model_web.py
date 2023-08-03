@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import mean_squared_error, r2_score
 
-from dataset import SequenceDataset, dataset_collate_fn
+from Test_Dataset import SequenceDataset, dataset_collate_fn
 from DPESol.args import dataset_file, protein_seq_max_len
 
 

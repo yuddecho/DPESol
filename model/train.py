@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, random_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 from DPESol.args import dataset_file, root
-from dataset import SequenceDataset, dataset_collate_fn
+from Test_Dataset import SequenceDataset, dataset_collate_fn
 
 """
 暂时不用：
@@ -75,7 +75,7 @@ class Args:
         with open(self.train_data_file, 'a', encoding='utf-8') as w:
             strs = ''
             for item in data:
-                strs += f'{item},'
+                strs += f'{item:.4f},'
             w.write(f'{strs[:-1]}\n')
             return strs[:-1]
 

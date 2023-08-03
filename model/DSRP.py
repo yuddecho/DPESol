@@ -122,7 +122,15 @@ class Args:
         self.dataset_scale = 0.8
         self.learn_rate = _parse_args.learn_rate
 
-        # cuda
+        # MLP
+        input_size = 1280 + 768  # ESM-2模型的输出大小，并展平
+        hidden_sizes = [int(item) for item in _parse_args.hidden_sizes.split(',')]  # 隐藏层大小列表
+        output_size = 1  # MLP的输出大小
+        dropout_prob = _parse_args.dropout_prob  # 被丢弃的概率
+        self.model = MLP(input_size, hidden_sizes, output_size, dropout_prob)
+        self.log(self.model)
+
+        # to cuda
         is_cuda = _parse_args.cuda
         if is_cuda:
             os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
@@ -130,18 +138,14 @@ class Args:
         else:
             self.device = torch.device("cpu")
 
-        # MLP
-        input_size = 1280 + 768  # ESM-2模型的输出大小，并展平
-        hidden_sizes = [int(item) for item in _parse_args.hidden_sizes.split(',')]  # 隐藏层大小列表
-        output_size = 1  # MLP的输出大小
-        dropout_prob = _parse_args.dropout_prob  # 被丢弃的概率
-        self.model = MLP(input_size, hidden_sizes, output_size, dropout_prob)
-
-        # to gpu
         if is_cuda and torch.cuda.device_count() > 1:
+            print(f"Let's use, {torch.cuda.device_count()}, GPUs!")
             # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
             self.model = nn.DataParallel(self.model)
-        self.model.to(self.device)
+        else:
+            print(f"Let's use, CPU!")
+
+        self.model.to(f'{self.model}')
 
         # 数据集文件
         self.dna_embedding_file = f'{root}/esol/dna_embedding.pkl'
@@ -180,7 +184,7 @@ class Args:
         with open(self.train_data_file, 'a', encoding='utf-8') as w:
             strs = ''
             for item in data:
-                strs += f'{item},'
+                strs += f'{item:.4f},'
             w.write(f'{strs[:-1]}\n')
             return strs[:-1]
 
@@ -242,7 +246,7 @@ class Train(Args):
             info = self.append_train_data(train_result + test_result)
 
             # 保存模型训练参数
-            rmse, r2 = (train_result[1] + test_result[1]) / 2.0, (train_result[2] + test_result[2]) / 2.0
+            rmse, r2 = test_result[1], test_result[2]
             if rmse < self.last_rmse or r2 > self.last_r2:
                 self.log(f'Best {info}', is_print=False)
 
