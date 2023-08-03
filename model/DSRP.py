@@ -144,7 +144,7 @@ class Args:
         else:
             print(f"Let's use, CPU!")
 
-        self.model.to(f'{self.model}')
+        self.model.to(self.device)
 
         # 数据集文件
         self.dna_embedding_file = f'{root}/esol/dna_embedding.pkl'
