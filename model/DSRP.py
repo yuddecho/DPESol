@@ -173,8 +173,6 @@ class Args:
         if os.path.exists(self.log_file):
             os.remove(self.log_file)
 
-        self.log(self.model)
-
     def log(self, msg, is_print=True):
         with open(self.log_file, 'a', encoding='utf-8') as w:
             w.write(f'{msg}\n')
