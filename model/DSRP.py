@@ -128,7 +128,6 @@ class Args:
         output_size = 1  # MLP的输出大小
         dropout_prob = _parse_args.dropout_prob  # 被丢弃的概率
         self.model = MLP(input_size, hidden_sizes, output_size, dropout_prob)
-        self.log(self.model)
 
         # to cuda
         is_cuda = _parse_args.cuda
@@ -173,6 +172,8 @@ class Args:
         self.log_file = f'{root}/model/log.txt'
         if os.path.exists(self.log_file):
             os.remove(self.log_file)
+
+        self.log(self.model)
 
     def log(self, msg, is_print=True):
         with open(self.log_file, 'a', encoding='utf-8') as w:
