@@ -128,6 +128,8 @@ class Args:
         self.dataset_scale = 0.8
         # self.learn_rate = _parse_args.learn_rate
 
+        self.n_trials = _parse_args.n_trials
+
         # MLP
         # input_size = 1280 + 768  # ESM-2模型的输出大小，并展平
         # hidden_sizes = [int(item) for item in _parse_args.hidden_sizes.split(',')]  # 隐藏层大小列表
@@ -246,8 +248,8 @@ class Train(Args):
             # 对数均匀分布的下界。通常是超参数的最小值，最大值
             lr = _trial.suggest_float('lr', 1e-5, 1e-1, log=True)
             hidden_dim = [
-                int(_trial.suggest_float('hidden_layer_1', 256, 2048, log=True)),
-                int(_trial.suggest_float('hidden_layer_2', 256, 2048, log=True)),
+                int(_trial.suggest_float('hidden_layer_1', 1024, 2048, log=True)),
+                int(_trial.suggest_float('hidden_layer_2', 512, 2048, log=True)),
                 int(_trial.suggest_float('hidden_layer_3', 256, 1024, log=True)),
                 int(_trial.suggest_float('hidden_layer_4', 32, 512, log=True))
             ]
@@ -281,7 +283,7 @@ class Train(Args):
 
         # ，可以取两个值之一：'minimize' 或 'maximize'。默认值是 'minimize'
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=100)
+        study.optimize(objective, n_trials=self.n_trials)
 
         print("Number of finished trials: ", len(study.trials))
         print("Best trial:")
@@ -423,6 +425,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="DSRP args info")
 
     parser.add_argument('-ne', '--num_epochs', type=int, default=100)
+
+    parser.add_argument('-nt', '--n_trials', type=int, default=100)
 
     parser.add_argument('-hs', '--hidden_sizes', type=str, default='512,128,32')
     parser.add_argument('-dp', '--dropout_prob', type=float, default=0.1, help='MLP 被丢弃的概率')
