@@ -21,7 +21,7 @@ def res_pic(train, test, tag):
 
 
 # get data
-res_file = f'{root}/model/train.data.csv'
+res_file = f'/Users/yudd/code/github/protein/model/train.data.csv'
 
 train_loss, test_loss = [], []
 train_rmse, test_rmse = [], []
