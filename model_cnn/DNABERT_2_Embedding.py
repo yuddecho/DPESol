@@ -123,7 +123,8 @@ if __name__ == '__main__':
 
         # 找到每个序列表示, 因为 不清楚 hidden_states size 中 第二维度的大小，如果多序列一起输入，会加入padding，在结果中求均值会带来误差
         # 所以默认 batch_size 为 1
-        embedding_mean = torch.mean(hidden_states[0], dim=0)
+        # embedding_mean = torch.mean(hidden_states[0], dim=0)
+        embedding_mean = hidden_states[0]
 
         gene_name = gene_names[0]
         if embedding_res_dict.get(gene_name, None) is None:

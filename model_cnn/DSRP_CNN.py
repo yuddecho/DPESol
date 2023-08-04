@@ -68,9 +68,7 @@ class SequenceDataset(Dataset):
         if protein_tensor is None:
             raise ValueError(f'Error: {_gene_name} no protein_tensor')
 
-        concatenated_tensor = torch.cat((dna_tensor, protein_tensor), dim=0)
-
-        return concatenated_tensor, solu_tensor
+        return (dna_tensor, protein_tensor), solu_tensor
 
     def __len__(self):
         return len(self.gene_name_list)
@@ -91,6 +89,7 @@ class MLP(nn.Module):
         sizes = [input_size] + hidden_sizes
         for i in range(len(sizes) - 1):
             layers.append(nn.Linear(sizes[i], sizes[i + 1]))
+            layers.append(nn.BatchNorm1d(sizes[i + 1]))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=dropout_prob))
 
@@ -103,8 +102,22 @@ class MLP(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
+        # 初试化参数
+        for index_id in range(len(hidden_sizes) + 1):
+            nn.init.kaiming_uniform_(self.mlp[index_id * 4].weight, nonlinearity='relu')
+
     def forward(self, x):
         return self.mlp(x)
+
+
+class CNN(nn.Module):
+    def __init__(self, input_size, hidden_sizes, output_size, dropout_prob):
+        """
+        :param input_size: input_size = 1280  # ESM-2模型的输出大小
+        :param hidden_sizes: hidden_sizes = [256, 128]  # 隐藏层大小列表
+        :param output_size: output_size = 1  # MLP的输出大小
+        """
+        super(CNN, self).__init__()
 
 
 class Args:
