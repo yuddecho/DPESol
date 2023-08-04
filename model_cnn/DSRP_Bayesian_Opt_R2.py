@@ -11,6 +11,7 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader, random_split
 
 from sklearn.metrics import mean_squared_error, r2_score
+import optuna
 
 from DPESol.args import root
 
@@ -125,31 +126,33 @@ class Args:
         self.num_epochs = _parse_args.num_epochs
         self.batch_size = _parse_args.batch_size
         self.dataset_scale = 0.8
-        self.learn_rate = _parse_args.learn_rate
+        # self.learn_rate = _parse_args.learn_rate
+
+        self.n_trials = _parse_args.n_trials
 
         # MLP
-        input_size = 1280 + 768  # ESM-2模型的输出大小，并展平
-        hidden_sizes = [int(item) for item in _parse_args.hidden_sizes.split(',')]  # 隐藏层大小列表
-        output_size = 1  # MLP的输出大小
-        dropout_prob = _parse_args.dropout_prob  # 被丢弃的概率
-        self.model = MLP(input_size, hidden_sizes, output_size, dropout_prob)
+        # input_size = 1280 + 768  # ESM-2模型的输出大小，并展平
+        # hidden_sizes = [int(item) for item in _parse_args.hidden_sizes.split(',')]  # 隐藏层大小列表
+        # output_size = 1  # MLP的输出大小
+        # dropout_prob = _parse_args.dropout_prob  # 被丢弃的概率
+        # self.model = MLP(input_size, hidden_sizes, output_size, dropout_prob)
 
         # to cuda
-        is_cuda = _parse_args.cuda
-        if is_cuda:
-            os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
-            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = torch.device("cpu")
-
-        if is_cuda and torch.cuda.device_count() > 1:
-            print(f"Let's use, {torch.cuda.device_count()}, GPUs!")
-            # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
-            self.model = nn.DataParallel(self.model)
-        else:
-            print(f"Let's use, CPU!")
-
-        self.model.to(self.device)
+        self.is_cuda = _parse_args.cuda
+        # if is_cuda:
+        #     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+        #     self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        # else:
+        #     self.device = torch.device("cpu")
+        #
+        # if is_cuda and torch.cuda.device_count() > 1:
+        #     print(f"Let's use, {torch.cuda.device_count()}, GPUs!")
+        #     # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
+        #     self.model = nn.DataParallel(self.model)
+        # else:
+        #     print(f"Let's use, CPU!")
+        #
+        # self.model.to(self.device)
 
         # 数据集文件
         self.dna_embedding_file = f'{root}/esol/dna_embedding.pkl'
@@ -211,9 +214,11 @@ class Train(Args):
     def __init__(self, _parse_args):
         super().__init__(_parse_args)
 
-        # 定义损失函数和优化器
-        self.criterion = nn.MSELoss()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learn_rate)
+        # 定义模型，损失函数和优化器
+        self.model = None
+        self.criterion = None
+        self.optimizer = None
+        self.device = None
 
         # 构建 dataset
         seq_dataset = SequenceDataset(self.dataset_file, self.dna_embedding_file, self.protein_embedding_file)
@@ -226,19 +231,73 @@ class Train(Args):
         self.train_dataloader = DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
         self.test_dataloader = DataLoader(dataset=test_dataset, batch_size=self.batch_size, shuffle=True)
 
-        # 断点续训，恢复参数
-        if self.resume and os.path.exists(self.checkpoint_pt):
-            checkpoint = torch.load(self.checkpoint_pt)
+        # # 断点续训，恢复参数
+        # if self.resume and os.path.exists(self.checkpoint_pt):
+        #     checkpoint = torch.load(self.checkpoint_pt)
+        #
+        #     self.model.load_state_dict(checkpoint['model_state_dict'])
+        #     self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        #     self.curr_epoch = checkpoint['epoch'] + 1
+        #     self.last_rmse = checkpoint['rmse']
+        #     self.last_r2 = checkpoint['r2']
+        #
+        #     self.log(f'Info: resume checkpoint')
 
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.curr_epoch = checkpoint['epoch'] + 1
-            self.last_rmse = checkpoint['rmse']
-            self.last_r2 = checkpoint['r2']
+    def bayesian_opt(self):
+        def objective(_trial):
+            # 对数均匀分布的下界。通常是超参数的最小值，最大值
+            lr = _trial.suggest_float('lr', 1e-5, 1e-1, log=True)
+            hidden_dim = [
+                int(_trial.suggest_float('hidden_layer_1', 1024, 2048, log=True)),
+                int(_trial.suggest_float('hidden_layer_2', 512, 2048, log=True)),
+                int(_trial.suggest_float('hidden_layer_3', 256, 1024, log=True)),
+                int(_trial.suggest_float('hidden_layer_4', 32, 512, log=True))
+            ]
+            dropout = _trial.suggest_float('dropout', 0.1, 0.5, log=True)
 
-            self.log(f'Info: resume checkpoint')
+            input_dim = 2048  # For example, if the input size is 28x28
+            output_dim = 1  # For regression, output_dim should be 1
+            self.model = MLP(input_dim, hidden_dim, output_dim, dropout)
+
+            # to cuda
+            if self.is_cuda and torch.cuda.device_count() > 1:
+                os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+                print(f"Let's use, {torch.cuda.device_count()}, GPUs!")
+                # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
+                self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+                self.model = nn.DataParallel(self.model)
+            else:
+                self.device = torch.device("cpu")
+                print(f"Let's use, CPU!")
+
+            self.model.to(self.device)
+
+            self.criterion = nn.MSELoss()
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+
+            self.curr_epoch = 0
+
+            res_value = self.run()
+
+            return res_value
+
+        # ，可以取两个值之一：'minimize' 或 'maximize'。默认值是 'minimize'
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=self.n_trials)
+
+        print("Number of finished trials: ", len(study.trials))
+        print("Best trial:")
+        trial = study.best_trial
+        print("  Value: ", trial.value)
+        print("  Params: ")
+        for key, value in trial.params.items():
+            print("    {}: {}".format(key, value))
 
     def run(self):
+        # 返回最后10结果的平均值
+        count = 10
+        index_epoch, res_total_value = self.num_epochs - count, 0
+
         self.log(f'Info: start training', is_print=False)
         bar = tqdm.tqdm(total=(self.num_epochs - self.curr_epoch))
         for epoch in range(self.curr_epoch, self.num_epochs):
@@ -267,7 +326,12 @@ class Train(Args):
             bar.update(1)
             bar.set_description(f'rmse: {rmse:.3f}, r2: {r2:.3f}')
 
+            if epoch >= index_epoch:
+                res_total_value += r2
+
         bar.close()
+
+        return res_total_value / count
 
     def train_model(self, epoch):
         # need args: model, dataloader, criterion, optimizer, num_epochs
@@ -360,7 +424,9 @@ class Train(Args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="DSRP args info")
 
-    parser.add_argument('-ne', '--num_epochs', type=int, default=500)
+    parser.add_argument('-ne', '--num_epochs', type=int, default=100)
+
+    parser.add_argument('-nt', '--n_trials', type=int, default=100)
 
     parser.add_argument('-hs', '--hidden_sizes', type=str, default='512,128,32')
     parser.add_argument('-dp', '--dropout_prob', type=float, default=0.1, help='MLP 被丢弃的概率')
@@ -375,6 +441,7 @@ if __name__ == '__main__':
     print(parse_args)
 
     train = Train(parse_args)
-    train.run()
+    # train.run()
+    train.bayesian_opt()
 
     print('ok')

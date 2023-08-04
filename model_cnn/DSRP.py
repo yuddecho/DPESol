@@ -91,7 +91,6 @@ class MLP(nn.Module):
         sizes = [input_size] + hidden_sizes
         for i in range(len(sizes) - 1):
             layers.append(nn.Linear(sizes[i], sizes[i + 1]))
-            layers.append(nn.BatchNorm1d(sizes[i + 1]))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=dropout_prob))
 
@@ -103,10 +102,6 @@ class MLP(nn.Module):
         #     layers.append(nn.ReLU())
 
         self.mlp = nn.Sequential(*layers)
-
-        # 初试化参数
-        for index_id in range(len(hidden_sizes) + 1):
-            nn.init.kaiming_uniform_(self.mlp[index_id * 4].weight, nonlinearity='relu')
 
     def forward(self, x):
         return self.mlp(x)
