@@ -421,11 +421,15 @@ if __name__ == '__main__':
 
     parser.add_argument('-c', '--cuda', action='store_true', help='是否开启 cuda')
     parser.add_argument('-re', '--resume', action='store_true', help='是否断点续训')
+    parser.add_argument('-p', '--predict', action='store_true', help='预测数据')
 
     parse_args = parser.parse_args()
     print(parse_args)
 
     train = Train(parse_args)
-    train.run()
+    if not parse_args.perdict:
+        train.run()
+    else:
+        train.predict()
 
     print('ok')
