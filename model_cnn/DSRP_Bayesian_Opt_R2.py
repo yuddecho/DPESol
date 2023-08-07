@@ -105,9 +105,13 @@ class MLP(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
-        # 初试化参数
-        for index_id in range(len(hidden_sizes) + 1):
-            nn.init.kaiming_uniform_(self.mlp[index_id * 4].weight, nonlinearity='relu')
+        # 初试化参数 Kaiming He等人提出的初始化方法
+        # for index_id in range(len(hidden_sizes) + 1):
+        #     nn.init.kaiming_uniform_(self.mlp[index_id * 4].weight, nonlinearity='relu')
+        # 使用nn.init.kaiming_uniform_对权重进行初始化
+        for layer in self.mlp.children():
+            if isinstance(layer, nn.Linear):
+                nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
 
     def forward(self, x):
         return self.mlp(x)

@@ -165,6 +165,10 @@ class Args:
         if os.path.exists(self.train_data_file):
             os.remove(self.train_data_file)
 
+        self.predicted_res_data_file = f'{root}/model/predict.data.csv'
+        if os.path.exists(self.predicted_res_data_file):
+            os.remove(self.predicted_res_data_file)
+
         # model checkpoint
         self.resume = _parse_args.resume
 
@@ -191,6 +195,11 @@ class Args:
                 strs += f'{item:.4f},'
             w.write(f'{strs[:-1]}\n')
             return strs[:-1]
+
+    def write_predicted_res(self, predict, target):
+        with open(self.predicted_res_data_file, 'a', encoding='utf-8') as w:
+            for i in range(predict):
+                w.write(f'{predict[i]:.4f},{target[i]:.4f}\n')
 
     def _set_seed(self):
         seed = self.seed
@@ -355,6 +364,48 @@ class Train(Args):
                     f"Evaluate Epoch [{epoch + 1}/{self.num_epochs}], Total Loss: {(loss_total / step_count):.4f}, RMSE: {rmse_total / step_count:.4f}, R^2: {r2_total / step_count:.4f}", is_print=False)
 
             return [loss_total / step_count, rmse_total / step_count, r2_total / step_count]
+
+    def predict(self):
+        if not os.path.exists(self.checkpoint_pt):
+            raise ValueError(f'checkpoint path not find')
+
+        checkpoint = torch.load(self.checkpoint_pt)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.model.eval()
+
+        with torch.no_grad():
+            loss_total, rmse_total, r2_total, step_count = 0, 0, 0, 0
+
+            for step, (inputs, targets) in enumerate(self.test_dataloader):
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
+
+                outputs = self.model(inputs)
+
+                # tensor[2, 1] -> tensor[2]
+                outputs = torch.squeeze(outputs)
+
+                loss = self.criterion(outputs, targets)
+
+                # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
+                outputs_np, targets_np = outputs.detach().to('cpu').numpy(), targets.to('cpu').numpy()
+                self.write_predicted_res(outputs_np, targets_np)
+
+                # 计算均方根误差（RMSE）
+                rmse = np.sqrt(mean_squared_error(outputs_np, targets_np))
+
+                # 计算决定系数（R^2） 参数顺序是真实标签在前，预测结果在后
+                r2 = r2_score(targets_np, outputs_np)
+
+                loss_total += loss.item()
+                rmse_total += rmse
+                r2_total += r2
+
+                step_count += 1
+
+            self.log(f'predict: {(loss_total / step_count):.4f}, {(rmse_total / step_count):.4f}, {(r2_total / step_count):.4f}')
+            with open(self.predicted_res_data_file, 'a', encoding='utf-8') as w:
+                w.write(f'predict: {(loss_total / step_count):.4f}, {(rmse_total / step_count):.4f}, {(r2_total / step_count):.4f}')
 
 
 if __name__ == '__main__':

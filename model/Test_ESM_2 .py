@@ -14,6 +14,7 @@ data = [
 ]
 batch_labels, batch_strs, batch_tokens = batch_converter(data)
 batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)
+print(batch_lens)
 
 # Extract per-residue representations (on CPU)
 with torch.no_grad():
