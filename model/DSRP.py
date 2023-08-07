@@ -403,6 +403,8 @@ class Train(Args):
 
                 step_count += 1
 
+                print(f'{step}, {loss.item()}, {rmse}, {r2}')
+
             self.log(f'predict: {(loss_total / step_count):.4f}, {(rmse_total / step_count):.4f}, {(r2_total / step_count):.4f}')
             with open(self.predicted_res_data_file, 'a', encoding='utf-8') as w:
                 w.write(f'predict: {(loss_total / step_count):.4f}, {(rmse_total / step_count):.4f}, {(r2_total / step_count):.4f}')
@@ -427,7 +429,7 @@ if __name__ == '__main__':
     print(parse_args)
 
     train = Train(parse_args)
-    if not parse_args.perdict:
+    if not parse_args.predict:
         train.run()
     else:
         train.predict()
