@@ -389,6 +389,8 @@ class Train(Args):
 
                 # RMSE 衡量了预测值和真实值之间的误差大小，R^2 衡量了模型对总体变异的解释能力。越小的 RMSE 和越接近1的 R^2 表示模型的预测结果越好。
                 outputs_np, targets_np = outputs.detach().to('cpu').numpy(), targets.to('cpu').numpy()
+                print(outputs_np.shape, targets_np.shape)
+                raise
                 self.write_predicted_res(outputs_np, targets_np)
 
                 # 计算均方根误差（RMSE）
